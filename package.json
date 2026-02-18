@@ -1,9 +1,8 @@
 {
   "name": "Mail2026",
   "version": "1.0.0",
-  "description": "API untuk menangani email masuk",
-  "main": "api/index.js",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "postal-mime": "^2.0.0"
   }
 }
