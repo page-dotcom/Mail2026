@@ -1,18 +1,188 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vercel Mail Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* HEADER ATAS */
+        .top-nav {
+            background: #fff;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        /* LAYOUT UTAMA (KIRI & KANAN) */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* SIDEBAR (DAFTAR PESAN) */
+        .sidebar {
+            width: 350px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .msg-item {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .msg-item:hover { background-color: #eef3fc; }
+        .msg-item.active { background-color: #e3f2fd; border-left: 4px solid #2196f3; }
+
+        .sender-name { font-weight: bold; color: #333; font-size: 14px; margin-bottom: 4px; display: block; }
+        .subject-text { font-size: 13px; color: #666; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .time-badge { font-size: 11px; color: #999; float: right; }
+
+        /* KONTEN UTAMA (KANAN) */
+        .content-view {
+            flex: 1;
+            background: #f8f9fa;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* IFRAME (LAYAR KACA UNTUK HTML ASLI) */
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            display: none; /* Sembunyi kalau belum diklik */
+        }
+
+        .placeholder {
+            margin: auto;
+            text-align: center;
+            color: #aaa;
+        }
+
+        /* RESPONSIVE (TAMPILAN HP) */
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .sidebar { width: 100%; height: 40%; border-right: none; border-bottom: 2px solid #ddd; }
+            .content-view { height: 60%; }
+        }
+    </style>
+</head>
 <body>
-<pre style="word-wrap: break-word; white-space: pre-wrap;">
-SYSTEM STATUS: ONLINE
----------------------
-Node ID: Vercel-Mail-Routing-01
-Status: 200 OK (Active)
 
-NOTICE TO ADMINISTRATORS:
-This is a private email routing endpoint used for internal development.
-Traffic detected is for verification purposes only.
+    <div class="top-nav">
+        <div class="d-flex align-items-center w-100 gap-2">
+            <span class="fw-bold text-primary">📩 INBOX</span>
+            <input type="text" id="my-email" class="form-control form-control-sm fw-bold text-center" style="max-width:300px; background:#f1f1f1;" readonly>
+            <button class="btn btn-sm btn-danger" onclick="gantiBaru()">BARU</button>
+            <button class="btn btn-sm btn-success" onclick="loadInbox()">REFRESH</button>
+        </div>
+    </div>
 
-Please do not block or blacklist this domain.
-Thank you.
-</pre>
+    <div class="main-container">
+        
+        <div class="sidebar" id="msg-list">
+            <div class="text-center p-5 text-muted">Memuat daftar...</div>
+        </div>
+
+        <div class="content-view">
+            <div id="empty-state" class="placeholder">
+                <h4>📭 Belum ada pesan dipilih</h4>
+                <p>Klik salah satu pesan di sebelah kiri untuk membaca.</p>
+            </div>
+            <iframe id="email-frame" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+        </div>
+
+    </div>
+
+    <script>
+        const DOMAIN = "rumahrakyatid.eu.org"; // Ganti dengan domain kamu
+
+        function init() {
+            let m = localStorage.getItem("vercel_ui_mail");
+            if (!m) {
+                m = "user" + Math.floor(Math.random()*99999) + "@" + DOMAIN;
+                localStorage.setItem("vercel_ui_mail", m);
+            }
+            document.getElementById("my-email").value = m;
+            loadInbox();
+        }
+
+        async function loadInbox() {
+            const mail = document.getElementById("my-email").value;
+            const list = document.getElementById("msg-list");
+            
+            try {
+                // PANGGIL API INBOX
+                const res = await fetch(`/api/inbox?address=${mail}`);
+                const data = await res.json();
+
+                if (data.inbox && data.inbox.length > 0) {
+                    let html = "";
+                    // Simpan data pesan di memori browser biar pas diklik gak usah loading lagi
+                    window.inboxData = data.inbox;
+
+                    data.inbox.forEach((msg, index) => {
+                        // Bersihkan nama pengirim biar rapi
+                        const sender = msg.sender.replace(/<.*?>/g, "").trim(); 
+                        
+                        html += `
+                        <div class="msg-item" onclick="bukaPesan(${index}, this)">
+                            <span class="time-badge">${new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                            <span class="sender-name">${sender}</span>
+                            <span class="subject-text">${msg.subject}</span>
+                        </div>`;
+                    });
+                    list.innerHTML = html;
+                } else {
+                    list.innerHTML = '<div class="text-center p-5 text-muted">Belum ada pesan masuk.<br><small>Coba kirim email baru.</small></div>';
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function bukaPesan(index, element) {
+            const msg = window.inboxData[index];
+            const frame = document.getElementById("email-frame");
+            const empty = document.getElementById("empty-state");
+
+            // Highlight item yang dipilih
+            document.querySelectorAll('.msg-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            // Tampilkan Iframe
+            empty.style.display = "none";
+            frame.style.display = "block";
+
+            // MASUKKAN HTML ASLI KE DALAM IFRAME
+            const doc = frame.contentWindow.document;
+            doc.open();
+            doc.write(msg.body_text); // Ini HTML bersih dari decoder kamu
+            doc.close();
+        }
+
+        function gantiBaru() {
+            if(confirm("Yakin ganti email? Email lama akan hilang dari tampilan.")) {
+                localStorage.removeItem("vercel_ui_mail");
+                location.reload();
+            }
+        }
+
+        init();
+        setInterval(loadInbox, 5000); // Auto refresh tiap 5 detik
+    </script>
 </body>
 </html>
