@@ -1,55 +1,41 @@
-// api/receive.js
 import { createClient } from '@supabase/supabase-js';
+import PostalMime from 'postal-mime';
 
-// Inisialisasi koneksi ke Supabase
-// (Nanti kita isi variabel ini di Setting Vercel)
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const apiSecret = process.env.API_SECRET; // Password biar aman
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 export default async function handler(req, res) {
-  // 1. Cek Metode Request (Harus POST)
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  // 2. Cek Password Rahasia (Security)
-  // Nanti di Cloudflare kita set header 'x-secret-key'
   const secret = req.headers['x-secret-key'];
-  if (secret !== apiSecret) {
-    return res.status(401).json({ error: 'Unauthorized: Salah password bos!' });
-  }
+  if (secret !== process.env.API_SECRET) return res.status(401).send('Unauthorized');
 
-  // 3. Ambil Data dari Body Request
-  // Data ini nanti dikirim oleh Cloudflare Worker
-  const { from, to, subject, text, html } = req.body;
-
-  if (!from || !to || !subject) {
-    return res.status(400).json({ error: 'Data tidak lengkap' });
-  }
+  // Ambil data mentah yang dikirim Worker
+  const { from, to, subject, text } = req.body;
 
   try {
-    // 4. Masukkan ke Database Supabase
-    const { data, error } = await supabase
-      .from('emails') // Nama tabel di Supabase nanti
-      .insert([
-        {
+    let cleanText = text;
+
+    // Jika pesan mengandung kode-kode aneh (MIME), kita bedah pakai PostalMime
+    if (text.includes("Content-Type:")) {
+      const parser = new PostalMime();
+      const emailData = await parser.parse(text);
+      // Ambil versi teks murni, kalau gak ada ambil versi HTML (tanpa tag)
+      cleanText = emailData.text || emailData.html.replace(/<[^>]*>?/gm, '');
+    }
+
+    const { error } = await supabase
+      .from('emails')
+      .insert([{
           sender: from,
-          recipient: to, // Ini email fake kamu (misal: budi@domain.com)
+          recipient: to,
           subject: subject,
-          body_text: text,
-          body_html: html,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+          body_text: cleanText.trim(), // Teks yang sudah bersih
+          created_at: new Date().toISOString()
+      }]);
 
     if (error) throw error;
-
-    return res.status(200).json({ message: 'Email berhasil disimpan!', data });
-
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    res.status(200).json({ message: 'Clean mail saved!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 }
