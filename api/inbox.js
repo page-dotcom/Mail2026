@@ -1,4 +1,3 @@
-// api/inbox.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -6,28 +5,29 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req, res) {
-  // Hanya boleh GET
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Gunakan metode GET' });
-  }
+  // --- IZIN AKSES (CORS) BIAR BLOGGER BISA BACA ---
+  res.setHeader('Access-Control-Allow-Origin', '*'); 
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Ambil alamat email yang mau dicek dari URL
-  // Contoh: https://domain-vercel-kamu/api/inbox?address=budi@domain.com
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  // ------------------------------------------------
+
   const { address } = req.query;
 
   if (!address) {
-    return res.status(400).json({ error: 'Mau cek inbox siapa? Masukkan parameter address' });
+    return res.status(400).json({ error: 'Parameter address wajib diisi' });
   }
 
   try {
-    // Ambil data dari Supabase
-    // Urutkan dari yang terbaru (descending)
     const { data, error } = await supabase
       .from('emails')
       .select('*')
-      .eq('recipient', address) // Filter hanya email milik 'address'
+      .eq('recipient', address)
       .order('created_at', { ascending: false })
-      .limit(20); // Ambil 20 email terakhir aja biar cepet
+      .limit(20);
 
     if (error) throw error;
 
